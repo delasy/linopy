@@ -131,3 +131,38 @@ def test_update_adding_dims_raises(
         ValueError, match=r"expression that adds dimensions \['j'\] is unsupported"
     ):
         update(c, x)
+
+
+def test_label_index_invalidated_on_sanitize_infinities(backend: linopy.Model) -> None:
+    # https://github.com/PyPSA/linopy/issues/1178
+    m = backend
+    i = pd.RangeIndex(3, name="i")
+    x = m.add_variables(lower=0, coords=[i], name="x")
+    m.add_constraints(x <= xr.DataArray([np.inf, 5.0, np.inf], coords=[i]), name="up")
+    m.add_constraints(x >= 1, name="lo")
+    m.add_objective(x.sum())
+
+    # reading the matrices before the solve caches the label index
+    assert len(m.matrices.clabels) == 6
+    status, _ = m.solve("highs", io_api="direct")
+
+    assert status == "ok"
+    assert len(m.matrices.clabels) == 4
+    np.testing.assert_array_equal(m.constraints.label_index.clabels, m.matrices.clabels)
+    np.testing.assert_allclose(m.constraints["lo"].dual.values, [1.0, 1.0, 1.0])
+
+
+def test_label_index_invalidated_on_sanitize_missings(backend: linopy.Model) -> None:
+    m = backend
+    i = pd.RangeIndex(3, name="i")
+    j = pd.RangeIndex(2, name="j")
+    x = m.add_variables(lower=0, coords=[i, j], name="x")
+    present = xr.DataArray([True, False, True], coords=[i])
+    # the row at i=1 keeps its label but has no term
+    m.add_constraints(x.where(present).sum("j") >= 0, name="c")
+
+    assert len(m.constraints.label_index.clabels) == 3
+    m.constraints.sanitize_missings()
+
+    assert len(m.matrices.clabels) == 2
+    np.testing.assert_array_equal(m.constraints.label_index.clabels, m.matrices.clabels)

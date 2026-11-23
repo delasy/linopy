@@ -1510,6 +1510,7 @@ class Constraints(LabelContainer[Constraint]):
         """
         for con in self.data.values():
             con.sanitize_missings()
+        self._invalidate_label_position_index()
 
     def sanitize_infinities(self) -> None:
         """
@@ -1521,6 +1522,7 @@ class Constraints(LabelContainer[Constraint]):
         """
         for con in self.data.values():
             con.sanitize_infinities()
+        self._invalidate_label_position_index()
 
     def format_labels(
         self, values: Sequence[int], display_max_terms: int | None = None
